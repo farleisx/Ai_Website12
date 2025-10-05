@@ -1,77 +1,128 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>SSAI AI Builder — Dashboard</title>
-  <style>
-    body { font-family:'Inter',sans-serif; margin:0; background:#f0f4f8; }
-    header { background:#4f46e5; color:white; padding:16px; text-align:center; position:relative; }
-    header button { position:absolute; right:16px; top:16px; background:#fff; color:#4f46e5; border:none; border-radius:6px; padding:6px 12px; cursor:pointer; }
-    header button:hover { background:#e5e7eb; }
-    #credits { font-weight:bold; margin-bottom:12px; display:block; }
-    main { max-width:700px; margin:24px auto; padding:0 16px; }
-    textarea, button { width:100%; padding:10px; margin-top:10px; border-radius:6px; border:1px solid #ccc; }
-    button { background:#4f46e5; color:white; border:none; cursor:pointer; }
-    button:hover { background:#4338ca; }
-    #result { margin-top:16px; padding:12px; background:white; border-radius:8px; min-height:100px; box-shadow:0 4px 12px rgba(0,0,0,.05); }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SSAI AI Builder — Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  body { font-family: 'Inter', sans-serif; margin:0; background:#f3f4f6; color:#111; }
+  header { background:#4f46e5; color:white; display:flex; justify-content:space-between; align-items:center; padding:16px 24px; box-shadow:0 4px 10px rgba(0,0,0,0.1); }
+  header h1 { margin:0; font-size:1.5rem; }
+  header button { background:white; color:#4f46e5; border:none; padding:8px 16px; border-radius:6px; cursor:pointer; font-weight:600; }
+  header button:hover { background:#e0e0ff; }
+  #credits { font-weight:600; }
+  
+  main { display:flex; flex-wrap:wrap; margin:24px; gap:24px; justify-content:center; }
+  .card { background:white; border-radius:12px; padding:16px; flex:1 1 400px; box-shadow:0 4px 16px rgba(0,0,0,0.05); display:flex; flex-direction:column; }
+  
+  textarea { width:100%; height:120px; border:1px solid #ccc; border-radius:8px; padding:10px; resize:none; font-family: monospace; font-size:0.95rem; }
+  button.generate, button.copy { margin-top:12px; background:#4f46e5; color:white; border:none; padding:10px; border-radius:8px; cursor:pointer; font-weight:600; }
+  button.generate:hover, button.copy:hover { background:#4338ca; }
+
+  #console { margin-top:12px; background:#111; color:#0f0; font-family: monospace; font-size:0.9rem; padding:12px; border-radius:8px; min-height:80px; overflow-y:auto; }
+  #preview { margin-top:12px; background:#f9fafb; padding:12px; border-radius:8px; border:1px solid #ddd; min-height:200px; overflow:auto; font-family: monospace; white-space: pre-wrap; }
+  iframe#render { margin-top:12px; border:1px solid #ddd; border-radius:8px; width:100%; min-height:300px; }
+
+  @media(max-width:900px){ main{flex-direction:column;} }
+</style>
 </head>
 <body>
-  <!-- Define Supabase env vars for frontend -->
-  <script>
-    window.SUPABASE_URL = "https://qtavfdeifmkkyptgfwdl.supabase.co";
-    window.SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...";
-  </script>
 
-  <header>
-    SSAI AI Builder Dashboard
-    <button id="logout">Log Out</button>
-    <div id="credits">Credits: --</div>
-  </header>
+<header>
+  <h1>SSAI AI Builder</h1>
+  <div id="credits">Credits: --</div>
+  <button id="logout">Log Out</button>
+</header>
 
-  <main>
-    <h3>Generate a Website</h3>
-    <textarea id="prompt" placeholder="Describe your website..." rows="4"></textarea>
-    <button id="generate">Generate</button>
-    <div id="result"></div>
-  </main>
+<main>
+  <div class="card">
+    <h2>AI Agent</h2>
+    <textarea id="prompt" placeholder="Describe your website..."></textarea>
+    <button class="generate" id="generate">Generate</button>
+    <div id="console">Waiting for input...</div>
+  </div>
 
-  <script type="module">
-    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+  <div class="card">
+    <h2>Live HTML Preview</h2>
+    <button class="copy" id="copyBtn">Copy HTML</button>
+    <div id="preview">&lt;!-- AI-generated HTML will appear here --&gt;</div>
+    <iframe id="render"></iframe>
+  </div>
+</main>
 
-    const supabase = createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY)
-    const stored = JSON.parse(localStorage.getItem('ssaib_user')||'{}')
-    if (!stored.id) window.location.href = '/index.html'
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
-    const creditsEl = document.getElementById('credits')
-    const resultEl = document.getElementById('result')
+// Supabase frontend anon
+window.SUPABASE_URL = "https://qtavfdeifmkkyptgfwdl.supabase.co";
+window.SUPABASE_ANON_KEY = "PASTE_FULL_ANON_KEY_HERE";
+const supabase = createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY)
 
-    document.getElementById('logout').addEventListener('click', async ()=>{
-      await supabase.auth.signOut()
-      localStorage.removeItem('ssaib_user')
-      window.location.href='/index.html'
+const stored = JSON.parse(localStorage.getItem('ssaib_user')||'{}')
+if(!stored.id) window.location.href='/index.html'
+
+const creditsEl = document.getElementById('credits')
+const consoleEl = document.getElementById('console')
+const previewEl = document.getElementById('preview')
+const promptEl = document.getElementById('prompt')
+const renderEl = document.getElementById('render')
+const copyBtn = document.getElementById('copyBtn')
+
+// Logout
+document.getElementById('logout').addEventListener('click', async ()=>{
+  await supabase.auth.signOut()
+  localStorage.removeItem('ssaib_user')
+  window.location.href='/index.html'
+})
+
+// Load credits
+async function loadCredits(){
+  const res = await fetch('/api/getCredits', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({user_id:stored.id})
+  })
+  const json = await res.json()
+  creditsEl.textContent = 'Credits: '+(json.credits??0)
+}
+loadCredits()
+
+// Generate button
+document.getElementById('generate').addEventListener('click', async ()=>{
+  const prompt = promptEl.value.trim()
+  if(!prompt) return alert('Please enter a prompt!')
+  consoleEl.textContent = 'AI is thinking...'
+  previewEl.textContent = ''
+  renderEl.srcdoc = ''
+
+  try{
+    const res = await fetch('/api/generate',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({prompt,user_id:stored.id})
     })
-
-    async function loadCredits(){
-      const { data, error } = await supabase.from('credits').select('credits').eq('user_id', stored.id).single()
-      creditsEl.textContent = 'Credits: '+(data?.credits||0)
+    const data = await res.json()
+    if(data.error){
+      consoleEl.textContent = 'Error: '+data.error
+      return
     }
+    consoleEl.textContent = 'Generation complete!'
+    previewEl.textContent = data.html
+    renderEl.srcdoc = data.html
     loadCredits()
+  }catch(err){
+    consoleEl.textContent = 'Error: '+err.message
+  }
+})
 
-    document.getElementById('generate').addEventListener('click', async ()=>{
-      const prompt = document.getElementById('prompt').value.trim()
-      if(!prompt) return alert('Enter a prompt!')
-      const res = await fetch('/api/generate', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({prompt,user_id:stored.id})
-      })
-      const json = await res.json()
-      if(json.error) resultEl.textContent = 'Error: '+json.error
-      else resultEl.innerHTML = json.html
-      loadCredits()
-    })
-  </script>
+// Copy HTML button
+copyBtn.addEventListener('click', ()=>{
+  navigator.clipboard.writeText(previewEl.textContent)
+    .then(()=>{ consoleEl.textContent='HTML copied to clipboard!'; })
+    .catch(()=>{ consoleEl.textContent='Failed to copy.'; })
+})
+</script>
+
 </body>
 </html>
