@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 
+// Supabase server-side
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -11,7 +12,7 @@ export default async function handler(req, res) {
   const { prompt, user_id } = req.body
   if (!prompt || !user_id) return res.status(400).json({ error: 'Missing prompt or user_id' })
 
-  // 1️⃣ Check credits
+  // 1️⃣ Fetch user credits
   const { data, error } = await supabase
     .from('credits')
     .select('credits')
@@ -22,7 +23,7 @@ export default async function handler(req, res) {
   if (data.credits < 1) return res.status(400).json({ error: 'Not enough credits' })
 
   try {
-    // 2️⃣ Gemini 2.5 Flash API call
+    // 2️⃣ Call Gemini 2.5 Flash API
     const r = await fetch('https://generativelanguage.googleapis.com/v1beta2/models/gemini-2.5-flash:generate', {
       method: 'POST',
       headers: {
@@ -36,12 +37,15 @@ export default async function handler(req, res) {
       })
     })
 
-    if (!r.ok) {
-      const text = await r.text()
-      return res.status(500).json({ error: 'Gemini API error: ' + text })
-    }
+    const text = await r.text() // read as text first
+    if (!r.ok) return res.status(500).json({ error: 'Gemini API error: ' + text })
 
-    const result = await r.json()
+    let result
+    try {
+      result = JSON.parse(text)
+    } catch {
+      return res.status(500).json({ error: 'Gemini returned invalid JSON: ' + text })
+    }
 
     // 3️⃣ Deduct 1 credit
     await supabase
@@ -50,7 +54,9 @@ export default async function handler(req, res) {
       .eq('user_id', user_id)
 
     // 4️⃣ Return HTML output
-    res.status(200).json({ html: result?.candidates?.[0]?.content || '<p>No output</p>' })
+    const htmlOutput = result?.candidates?.[0]?.content || '<p>No output</p>'
+    res.status(200).json({ html: htmlOutput })
+
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: err.message || 'Generation failed' })
