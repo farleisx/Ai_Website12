@@ -18,10 +18,12 @@ export default async function handler(req, res) {
       .eq('user_id', user_id)
       .single()
 
-    if (error) return res.status(500).json({ error: 'Failed to fetch credits: ' + error.message })
+    if (error && error.code !== 'PGRST116') {
+      return res.status(500).json({ error: 'Failed to fetch credits: ' + error.message })
+    }
 
-    // If user row doesn't exist, initialize with 5 credits
     if (!data) {
+      // Initialize user with 5 credits
       await supabase.from('credits').insert({ user_id, credits: 5 })
       return res.status(200).json({ credits: 5 })
     }
@@ -29,6 +31,6 @@ export default async function handler(req, res) {
     res.status(200).json({ credits: data.credits })
   } catch (err) {
     console.error(err)
-    res.status(500).json({ error: err.message || 'Failed to fetch credits' })
+    res.status(500).json({ error: err.message || 'Server error' })
   }
 }
