@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SSAI AI Builder — Dashboard</title>
+  <style>
+    body { font-family:'Inter',sans-serif; margin:0; background:#f0f4f8; }
+    header { background:#4f46e5; color:white; padding:16px; text-align:center; }
+    header button { float:right; background:#fff; color:#4f46e5; border:none; border-radius:6px; padding:6px 12px; cursor:pointer; }
+    header button:hover { background:#e5e7eb; }
+    main { max-width:700px; margin:24px auto; padding:0 16px; }
+    textarea, button { width:100%; padding:10px; margin-top:10px; border-radius:6px; border:1px solid #ccc; }
+    button { background:#4f46e5; color:white; border:none; cursor:pointer; }
+    button:hover { background:#4338ca; }
+    #credits { font-weight:bold; margin-bottom:12px; display:block; }
+    #result { margin-top:16px; padding:12px; background:white; border-radius:8px; min-height:100px; box-shadow:0 4px 12px rgba(0,0,0,.05); }
+  </style>
+</head>
+<body>
+  <header>
+    SSAI AI Builder Dashboard
+    <button id="logout">Log Out</button>
+    <div id="credits">Credits: --</div>
+  </header>
+  <main>
+    <h3>Generate a Website</h3>
+    <textarea id="prompt" placeholder="Describe your website..." rows="4"></textarea>
+    <button id="generate">Generate</button>
+    <div id="result"></div>
+  </main>
+
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+
+    const SUPABASE_URL = window.SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL
+    const SUPABASE_ANON = window.SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON)
+
+    const stored = JSON.parse(localStorage.getItem('ssaib_user')||'{}')
+    if (!stored.id) window.location.href = '/index.html'
+
+    const creditsEl = document.getElementById('credits')
+    const resultEl = document.getElementById('result')
+
+    document.getElementById('logout').addEventListener('click', async ()=>{
+      await supabase.auth.signOut()
+      localStorage.removeItem('ssaib_user')
+      window.location.href='/index.html'
+    })
+
+    async function loadCredits(){
+      const { data, error } = await supabase.from('credits').select('credits').eq('user_id', stored.id).single()
+      creditsEl.textContent = 'Credits: '+(data?.credits||0)
+    }
+    loadCredits()
+
+    document.getElementById('generate').addEventListener('click', async ()=>{
+      const prompt = document.getElementById('prompt').value.trim()
+      if(!prompt) return alert('Enter a prompt!')
+      const res = await fetch('/api/generate', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({prompt,user_id:stored.id})
+      })
+      const json = await res.json()
+      if(json.error) resultEl.textContent = 'Error: '+json.error
+      else resultEl.innerHTML = json.html
+      loadCredits()
+    })
+  </script>
+</body>
+</html>
