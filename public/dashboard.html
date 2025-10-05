@@ -1,115 +1,112 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>AI Website Builder Dashboard</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; color: #333; }
-    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-    #credits { font-weight: bold; }
-    #prompt { width: 100%; height: 80px; margin-bottom: 10px; }
-    button { padding: 8px 12px; margin-right: 5px; cursor: pointer; }
-    #console { background: #222; color: #0f0; padding: 10px; height: 120px; overflow-y: auto; font-family: monospace; margin-bottom: 10px; }
-    #preview { white-space: pre-wrap; background: #fff; padding: 10px; border: 1px solid #ccc; height: 200px; overflow-y: auto; margin-bottom: 10px; }
-    #render { width: 100%; height: 400px; border: 1px solid #ccc; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Website Builder Dashboard</title>
+<style>
+  body { font-family: Arial, sans-serif; background:#f5f5f5; margin:0; padding:0; display:flex; flex-direction:column; align-items:center;}
+  header { width:100%; background:#222; color:#fff; padding:1rem; display:flex; justify-content:space-between; align-items:center; }
+  main { width:90%; max-width:900px; margin-top:2rem; }
+  textarea { width:100%; height:100px; padding:0.5rem; font-family:monospace; }
+  button { padding:0.5rem 1rem; margin-top:0.5rem; }
+  #console { margin-top:1rem; font-weight:bold; }
+  #preview, #render { width:100%; height:300px; border:1px solid #ccc; margin-top:1rem; }
+</style>
 </head>
 <body>
-  <header>
-    <div id="credits">Credits: 0</div>
+<header>
+  <div>AI Dashboard</div>
+  <div>
+    <span id="credits">Credits: 0</span>
     <button id="logout">Logout</button>
-  </header>
+  </div>
+</header>
 
-  <textarea id="prompt" placeholder="Enter your prompt here..."></textarea><br>
+<main>
+  <textarea id="prompt" placeholder="Enter your website request here..."></textarea>
   <button id="generate">Generate</button>
   <button id="copyBtn">Copy HTML</button>
 
-  <h3>AI Console</h3>
-  <div id="console"></div>
-
-  <h3>Preview HTML</h3>
-  <div id="preview"></div>
-
-  <h3>Live Render</h3>
+  <div id="console">Ready</div>
+  <textarea id="preview" readonly placeholder="Generated HTML will appear here"></textarea>
   <iframe id="render"></iframe>
+</main>
 
-  <script type="module">
-    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
-    // Supabase frontend anon
-    const SUPABASE_URL = "https://qtavfdeifmkkyptgfwdl.supabase.co";
-    const SUPABASE_ANON_KEY = "PASTE_FULL_ANON_KEY_HERE";
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+window.SUPABASE_URL = "https://qtavfdeifmkkyptgfwdl.supabase.co";
+window.SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF0YXZmZGVpZm1ra3lwdGdmd2RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk0NzE0OTAsImV4cCI6MjA3NTA0NzQ5MH0.jx7oNPn4KGlMF0hldQUSz3vIo-b3lXQnYRe-sPWZU-w";
+const supabase = createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY)
 
-    // Load user
-    const stored = JSON.parse(localStorage.getItem('ssaib_user')||'{}')
-    if(!stored.id) window.location.href='/index.html'
+const stored = JSON.parse(localStorage.getItem('ssaib_user')||'{}')
+if(!stored.id) window.location.href='/index.html'
 
-    const creditsEl = document.getElementById('credits')
-    const consoleEl = document.getElementById('console')
-    const previewEl = document.getElementById('preview')
-    const promptEl = document.getElementById('prompt')
-    const renderEl = document.getElementById('render')
-    const copyBtn = document.getElementById('copyBtn')
+const creditsEl = document.getElementById('credits')
+const consoleEl = document.getElementById('console')
+const previewEl = document.getElementById('preview')
+const renderEl = document.getElementById('render')
+const promptEl = document.getElementById('prompt')
+const copyBtn = document.getElementById('copyBtn')
 
-    // Logout
-    document.getElementById('logout').addEventListener('click', async ()=>{
-      await supabase.auth.signOut()
-      localStorage.removeItem('ssaib_user')
-      window.location.href='/index.html'
+// Logout
+document.getElementById('logout').addEventListener('click', async ()=> {
+  await supabase.auth.signOut()
+  localStorage.removeItem('ssaib_user')
+  window.location.href='/index.html'
+})
+
+// Load credits
+async function loadCredits(){
+  try {
+    const res = await fetch('/api/generate', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({user_id:stored.id, action:'getCredits'})
     })
+    const json = await res.json()
+    creditsEl.textContent = 'Credits: '+(json.credits??0)
+  } catch(err) {
+    consoleEl.textContent = 'Failed to load credits: '+err.message
+  }
+}
+loadCredits()
 
-    // Load credits
-    async function loadCredits(){
-      try {
-        const res = await fetch('/api/generate', {
-          method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({user_id: stored.id, action: 'getCredits'})
-        })
-        const data = await res.json()
-        creditsEl.textContent = 'Credits: ' + (data.credits ?? 0)
-      } catch(err){
-        consoleEl.textContent = 'Failed to load credits: ' + err.message
-      }
+// Generate button
+document.getElementById('generate').addEventListener('click', async ()=> {
+  const prompt = promptEl.value.trim()
+  if(!prompt) return alert('Please enter a prompt!')
+  consoleEl.textContent = 'AI is thinking...'
+  previewEl.textContent = ''
+  renderEl.srcdoc = ''
+
+  try {
+    const res = await fetch('/api/generate',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({prompt,user_id:stored.id})
+    })
+    const data = await res.json()
+    if(data.error){
+      consoleEl.textContent = 'Error: '+data.error
+      return
     }
+    consoleEl.textContent = 'Generation complete!'
+    previewEl.value = data.output
+    renderEl.srcdoc = data.output
     loadCredits()
+  } catch(err) {
+    consoleEl.textContent = 'Error: '+err.message
+  }
+})
 
-    // Generate
-    document.getElementById('generate').addEventListener('click', async ()=>{
-      const prompt = promptEl.value.trim()
-      if(!prompt) return alert('Please enter a prompt!')
-
-      consoleEl.textContent = 'AI is thinking...'
-      previewEl.textContent = ''
-      renderEl.srcdoc = ''
-
-      try{
-        const res = await fetch('/api/generate',{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({prompt,user_id:stored.id})
-        })
-        const data = await res.json()
-        if(data.error){
-          consoleEl.textContent = 'Error: ' + data.error
-          return
-        }
-        consoleEl.textContent = 'Generation complete!'
-        previewEl.textContent = data.output
-        renderEl.srcdoc = data.output
-        loadCredits()
-      }catch(err){
-        consoleEl.textContent = 'Error: ' + err.message
-      }
-    })
-
-    // Copy button
-    copyBtn.addEventListener('click', ()=>{
-      navigator.clipboard.writeText(previewEl.textContent)
-        .then(()=>{ consoleEl.textContent='HTML copied to clipboard!'; })
-        .catch(()=>{ consoleEl.textContent='Failed to copy.'; })
-    })
-  </script>
+// Copy HTML button
+copyBtn.addEventListener('click', ()=>{
+  navigator.clipboard.writeText(previewEl.value)
+    .then(()=>{ consoleEl.textContent='HTML copied to clipboard!'; })
+    .catch(()=>{ consoleEl.textContent='Failed to copy.'; })
+})
+</script>
 </body>
 </html>
