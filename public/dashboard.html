@@ -1,52 +1,47 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SSAI AI Builder — Dashboard</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<title>AI Web Builder Dashboard</title>
 <style>
-  body { font-family: 'Inter', sans-serif; margin:0; background:#f3f4f6; color:#111; }
-  header { background:#4f46e5; color:white; display:flex; justify-content:space-between; align-items:center; padding:16px 24px; box-shadow:0 4px 10px rgba(0,0,0,0.1); }
+  body { font-family: 'Inter', sans-serif; background:#f4f4f9; margin:0; padding:0; }
+  header { display:flex; justify-content:space-between; align-items:center; padding:1rem 2rem; background:#3b82f6; color:white; }
   header h1 { margin:0; font-size:1.5rem; }
-  header button { background:white; color:#4f46e5; border:none; padding:8px 16px; border-radius:6px; cursor:pointer; font-weight:600; }
-  header button:hover { background:#e0e0ff; }
-  #credits { font-weight:600; }
-  
-  main { display:flex; flex-wrap:wrap; margin:24px; gap:24px; justify-content:center; }
-  .card { background:white; border-radius:12px; padding:16px; flex:1 1 400px; box-shadow:0 4px 16px rgba(0,0,0,0.05); display:flex; flex-direction:column; }
-  
-  textarea { width:100%; height:120px; border:1px solid #ccc; border-radius:8px; padding:10px; resize:none; font-family: monospace; font-size:0.95rem; }
-  button.generate, button.copy { margin-top:12px; background:#4f46e5; color:white; border:none; padding:10px; border-radius:8px; cursor:pointer; font-weight:600; }
-  button.generate:hover, button.copy:hover { background:#4338ca; }
-
-  #console { margin-top:12px; background:#111; color:#0f0; font-family: monospace; font-size:0.9rem; padding:12px; border-radius:8px; min-height:80px; overflow-y:auto; }
-  #preview { margin-top:12px; background:#f9fafb; padding:12px; border-radius:8px; border:1px solid #ddd; min-height:200px; overflow:auto; font-family: monospace; white-space: pre-wrap; }
-  iframe#render { margin-top:12px; border:1px solid #ddd; border-radius:8px; width:100%; min-height:300px; }
-
-  @media(max-width:900px){ main{flex-direction:column;} }
+  header button { padding:0.5rem 1rem; background:#2563eb; border:none; border-radius:0.25rem; color:white; cursor:pointer; }
+  main { display:flex; flex-direction:column; gap:1rem; padding:2rem; max-width:1200px; margin:auto; }
+  .top-bar { display:flex; justify-content:space-between; align-items:center; }
+  #credits { font-weight:bold; }
+  textarea, iframe { width:100%; height:300px; border:1px solid #ccc; border-radius:0.25rem; padding:1rem; font-family: monospace; font-size:0.9rem; }
+  #prompt { width:100%; padding:0.5rem; font-size:1rem; }
+  button { padding:0.5rem 1rem; font-size:1rem; border:none; border-radius:0.25rem; background:#3b82f6; color:white; cursor:pointer; }
+  #console { background:#111; color:#0f0; padding:1rem; border-radius:0.25rem; height:80px; overflow:auto; font-family: monospace; }
+  .preview-container { display:flex; flex-direction:column; gap:1rem; }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>SSAI AI Builder</h1>
-  <div id="credits">Credits: --</div>
-  <button id="logout">Log Out</button>
+  <h1>AI Web Builder Dashboard</h1>
+  <button id="logout">Logout</button>
 </header>
 
 <main>
-  <div class="card">
-    <h2>AI Agent</h2>
-    <textarea id="prompt" placeholder="Describe your website..."></textarea>
-    <button class="generate" id="generate">Generate</button>
-    <div id="console">Waiting for input...</div>
+  <div class="top-bar">
+    <span id="credits">Credits: 0</span>
+    <button id="copyBtn">Copy HTML</button>
   </div>
 
-  <div class="card">
-    <h2>Live HTML Preview</h2>
-    <button class="copy" id="copyBtn">Copy HTML</button>
-    <div id="preview">&lt;!-- AI-generated HTML will appear here --&gt;</div>
+  <label for="prompt">Enter your prompt:</label>
+  <textarea id="prompt" placeholder="Describe what website or feature you want AI to generate..."></textarea>
+  <button id="generate">Generate AI Code</button>
+
+  <div id="console">Status messages will appear here...</div>
+
+  <div class="preview-container">
+    <h3>Code Preview</h3>
+    <textarea id="preview" readonly></textarea>
+    <h3>Live Render</h3>
     <iframe id="render"></iframe>
   </div>
 </main>
@@ -76,15 +71,26 @@ document.getElementById('logout').addEventListener('click', async ()=>{
   window.location.href='/index.html'
 })
 
-// Load credits
+// Unified load credits function
 async function loadCredits(){
-  const res = await fetch('/api/getCredits', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({user_id:stored.id})
-  })
-  const json = await res.json()
-  creditsEl.textContent = 'Credits: '+(json.credits??0)
+  try{
+    const res = await fetch('/api/generate', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'getCredits', user_id: stored.id})
+    })
+    const text = await res.text()
+    let data
+    try { data = JSON.parse(text) } catch {
+      console.error('Failed to parse credits JSON:', text)
+      creditsEl.textContent = 'Credits: ?'
+      return
+    }
+    creditsEl.textContent = 'Credits: ' + (data.credits ?? 0)
+  }catch(err){
+    console.error('Error loading credits:', err)
+    creditsEl.textContent = 'Credits: ?'
+  }
 }
 loadCredits()
 
@@ -93,32 +99,44 @@ document.getElementById('generate').addEventListener('click', async ()=>{
   const prompt = promptEl.value.trim()
   if(!prompt) return alert('Please enter a prompt!')
   consoleEl.textContent = 'AI is thinking...'
-  previewEl.textContent = ''
+  previewEl.value = ''
   renderEl.srcdoc = ''
 
   try{
     const res = await fetch('/api/generate',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({prompt,user_id:stored.id})
+      body:JSON.stringify({prompt, user_id: stored.id})
     })
-    const data = await res.json()
-    if(data.error){
-      consoleEl.textContent = 'Error: '+data.error
+    const text = await res.text()
+    let data
+    try { data = JSON.parse(text) } 
+    catch {
+      console.error('Failed to parse generate JSON:', text)
+      consoleEl.textContent = 'AI returned invalid output'
       return
     }
+
+    if(data.error){
+      consoleEl.textContent = 'Error: ' + data.error
+      return
+    }
+
     consoleEl.textContent = 'Generation complete!'
-    previewEl.textContent = data.html
-    renderEl.srcdoc = data.html
-    loadCredits()
+    previewEl.value = data.output || '<p>No output</p>'
+    renderEl.srcdoc = data.output || '<p>No output</p>'
+
+    // Refresh credits after generation
+    creditsEl.textContent = 'Credits: ' + (data.credits ?? 0)
+
   }catch(err){
-    consoleEl.textContent = 'Error: '+err.message
+    consoleEl.textContent = 'Error: ' + err.message
   }
 })
 
 // Copy HTML button
 copyBtn.addEventListener('click', ()=>{
-  navigator.clipboard.writeText(previewEl.textContent)
+  navigator.clipboard.writeText(previewEl.value)
     .then(()=>{ consoleEl.textContent='HTML copied to clipboard!'; })
     .catch(()=>{ consoleEl.textContent='Failed to copy.'; })
 })
