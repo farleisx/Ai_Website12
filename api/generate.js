@@ -6,34 +6,49 @@ const supabase = createClient(
 )
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
-
-  const { prompt, user_id } = req.body
-  if (!prompt || !user_id) return res.status(400).json({ error: 'Missing prompt or user_id' })
-
   try {
-    // 1️⃣ Fetch user credits safely
-    const { data, error } = await supabase
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+
+    const { prompt, user_id, action } = req.body
+    if (!user_id) return res.status(400).json({ error: 'Missing user_id' })
+
+    // 1️⃣ Ensure user credits exist
+    let { data, error } = await supabase
       .from('credits')
       .select('credits')
       .eq('user_id', user_id)
       .single()
 
     if (error && error.code !== 'PGRST116') {
-      console.error('Supabase error:', error)
-      return res.status(500).json({ error: 'Failed to fetch credits: ' + error.message })
+      console.error('Supabase fetch error:', error)
+      return res.status(500).json({ error: 'Supabase fetch error: ' + error.message })
     }
 
-    let credits = data?.credits ?? 0
     if (!data) {
-      // Initialize user with 5 credits if missing
+      // Initialize with 5 credits
       await supabase.from('credits').insert({ user_id, credits: 5 })
-      credits = 5
+      data = { credits: 5 }
     }
 
+    let credits = data.credits
+
+    // 2️⃣ Handle "getCredits" action only
+    if (action === 'getCredits') {
+      return res.status(200).json({ credits })
+    }
+
+    // 3️⃣ Handle "useCredit" action only (deduct without generating)
+    if (action === 'useCredit') {
+      if (credits < 1) return res.status(400).json({ error: 'Not enough credits' })
+      await supabase.from('credits').update({ credits: credits - 1 }).eq('user_id', user_id)
+      return res.status(200).json({ credits: credits - 1 })
+    }
+
+    // 4️⃣ For "generate" action
+    if (!prompt) return res.status(400).json({ error: 'Missing prompt' })
     if (credits < 1) return res.status(400).json({ error: 'Not enough credits' })
 
-    // 2️⃣ Call Gemini 2.5 Flash
+    // 5️⃣ Call Gemini 2.5 Flash API
     const r = await fetch(
       'https://generativelanguage.googleapis.com/v1beta2/models/gemini-2.5-flash:generate',
       {
@@ -50,29 +65,28 @@ export default async function handler(req, res) {
       }
     )
 
-    const text = await r.text() // always read as text first
+    const text = await r.text()
     if (!r.ok) {
       console.error('Gemini API returned error:', text)
       return res.status(500).json({ error: 'Gemini API error: ' + text })
     }
 
     let result
-    try {
-      result = JSON.parse(text)
-    } catch {
+    try { result = JSON.parse(text) } 
+    catch {
       console.error('Gemini returned invalid JSON:', text)
       return res.status(500).json({ error: 'Gemini returned invalid JSON: ' + text })
     }
 
-    // 3️⃣ Deduct 1 credit
-    await supabase
-      .from('credits')
-      .update({ credits: credits - 1 })
-      .eq('user_id', user_id)
+    // 6️⃣ Deduct 1 credit
+    await supabase.from('credits').update({ credits: credits - 1 }).eq('user_id', user_id)
 
-    // 4️⃣ Return HTML output
-    const htmlOutput = result?.candidates?.[0]?.content || '<p>No output</p>'
-    res.status(200).json({ html: htmlOutput })
+    // 7️⃣ Return HTML output + current credits
+    res.status(200).json({
+      html: result?.candidates?.[0]?.content || '<p>No output</p>',
+      credits: credits - 1
+    })
+
   } catch (err) {
     console.error('Server error:', err)
     res.status(500).json({ error: err.message || 'Server error' })
