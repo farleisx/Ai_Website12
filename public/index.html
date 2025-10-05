@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SSAI AI Builder — Login</title>
+  <style>
+    body { font-family: 'Inter', sans-serif; margin:0; display:flex; justify-content:center; align-items:center; height:100vh; background:#f0f4f8; }
+    .card { background:white; padding:2rem; border-radius:12px; box-shadow:0 6px 20px rgba(0,0,0,.1); width:350px; text-align:center; }
+    input, button { width:100%; padding:10px; margin-top:10px; border-radius:6px; border:1px solid #ccc; }
+    button { background:#4f46e5; color:white; border:none; cursor:pointer; }
+    button:hover { background:#4338ca; }
+    .muted { font-size:13px; color:#666; margin-top:8px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>SSAI AI Builder</h2>
+    <input id="email" placeholder="you@example.com" type="email"/>
+    <input id="password" placeholder="password" type="password"/>
+    <button id="signup">Sign Up</button>
+    <button id="login">Log In</button>
+    <p id="msg" class="muted"></p>
+  </div>
+
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+
+    const SUPABASE_URL = window.SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL
+    const SUPABASE_ANON = window.SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+    if (!SUPABASE_URL || !SUPABASE_ANON) alert("Supabase env vars not set!")
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON)
+    const emailEl = document.getElementById('email')
+    const passEl = document.getElementById('password')
+    const msgEl = document.getElementById('msg')
+
+    document.getElementById('signup').addEventListener('click', async () => {
+      msgEl.textContent = 'Signing up...'
+      const { error } = await supabase.auth.signUp({ email: emailEl.value.trim(), password: passEl.value })
+      msgEl.textContent = error ? error.message : 'Check your email to confirm, then log in.'
+    })
+
+    document.getElementById('login').addEventListener('click', async () => {
+      msgEl.textContent = 'Logging in...'
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: emailEl.value.trim(),
+        password: passEl.value
+      })
+      if (error) { msgEl.textContent = error.message; return }
+      localStorage.setItem('ssaib_user', JSON.stringify({ id: data.user.id, email: data.user.email }))
+      window.location.href = '/dashboard.html'
+    })
+  </script>
+</body>
+</html>
