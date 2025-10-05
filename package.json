@@ -1,0 +1,18 @@
+{
+  "name": "ssai-ai-builder",
+  "version": "1.0.0",
+  "description": "AI Website Builder with Supabase login and credits, ready for Vercel",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.35.0",
+    "node-fetch": "^3.4.0"
+  },
+  "engines": {
+    "node": "20.x"
+  }
+}
