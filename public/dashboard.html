@@ -1,146 +1,115 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI Web Builder Dashboard</title>
-<style>
-  body { font-family: 'Inter', sans-serif; background:#f4f4f9; margin:0; padding:0; }
-  header { display:flex; justify-content:space-between; align-items:center; padding:1rem 2rem; background:#3b82f6; color:white; }
-  header h1 { margin:0; font-size:1.5rem; }
-  header button { padding:0.5rem 1rem; background:#2563eb; border:none; border-radius:0.25rem; color:white; cursor:pointer; }
-  main { display:flex; flex-direction:column; gap:1rem; padding:2rem; max-width:1200px; margin:auto; }
-  .top-bar { display:flex; justify-content:space-between; align-items:center; }
-  #credits { font-weight:bold; }
-  textarea, iframe { width:100%; height:300px; border:1px solid #ccc; border-radius:0.25rem; padding:1rem; font-family: monospace; font-size:0.9rem; }
-  #prompt { width:100%; padding:0.5rem; font-size:1rem; }
-  button { padding:0.5rem 1rem; font-size:1rem; border:none; border-radius:0.25rem; background:#3b82f6; color:white; cursor:pointer; }
-  #console { background:#111; color:#0f0; padding:1rem; border-radius:0.25rem; height:80px; overflow:auto; font-family: monospace; }
-  .preview-container { display:flex; flex-direction:column; gap:1rem; }
-</style>
+  <meta charset="UTF-8">
+  <title>AI Website Builder Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; color: #333; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    #credits { font-weight: bold; }
+    #prompt { width: 100%; height: 80px; margin-bottom: 10px; }
+    button { padding: 8px 12px; margin-right: 5px; cursor: pointer; }
+    #console { background: #222; color: #0f0; padding: 10px; height: 120px; overflow-y: auto; font-family: monospace; margin-bottom: 10px; }
+    #preview { white-space: pre-wrap; background: #fff; padding: 10px; border: 1px solid #ccc; height: 200px; overflow-y: auto; margin-bottom: 10px; }
+    #render { width: 100%; height: 400px; border: 1px solid #ccc; }
+  </style>
 </head>
 <body>
+  <header>
+    <div id="credits">Credits: 0</div>
+    <button id="logout">Logout</button>
+  </header>
 
-<header>
-  <h1>AI Web Builder Dashboard</h1>
-  <button id="logout">Logout</button>
-</header>
+  <textarea id="prompt" placeholder="Enter your prompt here..."></textarea><br>
+  <button id="generate">Generate</button>
+  <button id="copyBtn">Copy HTML</button>
 
-<main>
-  <div class="top-bar">
-    <span id="credits">Credits: 0</span>
-    <button id="copyBtn">Copy HTML</button>
-  </div>
+  <h3>AI Console</h3>
+  <div id="console"></div>
 
-  <label for="prompt">Enter your prompt:</label>
-  <textarea id="prompt" placeholder="Describe what website or feature you want AI to generate..."></textarea>
-  <button id="generate">Generate AI Code</button>
+  <h3>Preview HTML</h3>
+  <div id="preview"></div>
 
-  <div id="console">Status messages will appear here...</div>
+  <h3>Live Render</h3>
+  <iframe id="render"></iframe>
 
-  <div class="preview-container">
-    <h3>Code Preview</h3>
-    <textarea id="preview" readonly></textarea>
-    <h3>Live Render</h3>
-    <iframe id="render"></iframe>
-  </div>
-</main>
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
-<script type="module">
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+    // Supabase frontend anon
+    const SUPABASE_URL = "https://qtavfdeifmkkyptgfwdl.supabase.co";
+    const SUPABASE_ANON_KEY = "PASTE_FULL_ANON_KEY_HERE";
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-// Supabase frontend anon
-window.SUPABASE_URL = "https://qtavfdeifmkkyptgfwdl.supabase.co";
-window.SUPABASE_ANON_KEY = "PASTE_FULL_ANON_KEY_HERE";
-const supabase = createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY)
+    // Load user
+    const stored = JSON.parse(localStorage.getItem('ssaib_user')||'{}')
+    if(!stored.id) window.location.href='/index.html'
 
-const stored = JSON.parse(localStorage.getItem('ssaib_user')||'{}')
-if(!stored.id) window.location.href='/index.html'
+    const creditsEl = document.getElementById('credits')
+    const consoleEl = document.getElementById('console')
+    const previewEl = document.getElementById('preview')
+    const promptEl = document.getElementById('prompt')
+    const renderEl = document.getElementById('render')
+    const copyBtn = document.getElementById('copyBtn')
 
-const creditsEl = document.getElementById('credits')
-const consoleEl = document.getElementById('console')
-const previewEl = document.getElementById('preview')
-const promptEl = document.getElementById('prompt')
-const renderEl = document.getElementById('render')
-const copyBtn = document.getElementById('copyBtn')
-
-// Logout
-document.getElementById('logout').addEventListener('click', async ()=>{
-  await supabase.auth.signOut()
-  localStorage.removeItem('ssaib_user')
-  window.location.href='/index.html'
-})
-
-// Unified load credits function
-async function loadCredits(){
-  try{
-    const res = await fetch('/api/generate', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({action:'getCredits', user_id: stored.id})
+    // Logout
+    document.getElementById('logout').addEventListener('click', async ()=>{
+      await supabase.auth.signOut()
+      localStorage.removeItem('ssaib_user')
+      window.location.href='/index.html'
     })
-    const text = await res.text()
-    let data
-    try { data = JSON.parse(text) } catch {
-      console.error('Failed to parse credits JSON:', text)
-      creditsEl.textContent = 'Credits: ?'
-      return
+
+    // Load credits
+    async function loadCredits(){
+      try {
+        const res = await fetch('/api/generate', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({user_id: stored.id, action: 'getCredits'})
+        })
+        const data = await res.json()
+        creditsEl.textContent = 'Credits: ' + (data.credits ?? 0)
+      } catch(err){
+        consoleEl.textContent = 'Failed to load credits: ' + err.message
+      }
     }
-    creditsEl.textContent = 'Credits: ' + (data.credits ?? 0)
-  }catch(err){
-    console.error('Error loading credits:', err)
-    creditsEl.textContent = 'Credits: ?'
-  }
-}
-loadCredits()
+    loadCredits()
 
-// Generate button
-document.getElementById('generate').addEventListener('click', async ()=>{
-  const prompt = promptEl.value.trim()
-  if(!prompt) return alert('Please enter a prompt!')
-  consoleEl.textContent = 'AI is thinking...'
-  previewEl.value = ''
-  renderEl.srcdoc = ''
+    // Generate
+    document.getElementById('generate').addEventListener('click', async ()=>{
+      const prompt = promptEl.value.trim()
+      if(!prompt) return alert('Please enter a prompt!')
 
-  try{
-    const res = await fetch('/api/generate',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({prompt, user_id: stored.id})
+      consoleEl.textContent = 'AI is thinking...'
+      previewEl.textContent = ''
+      renderEl.srcdoc = ''
+
+      try{
+        const res = await fetch('/api/generate',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({prompt,user_id:stored.id})
+        })
+        const data = await res.json()
+        if(data.error){
+          consoleEl.textContent = 'Error: ' + data.error
+          return
+        }
+        consoleEl.textContent = 'Generation complete!'
+        previewEl.textContent = data.output
+        renderEl.srcdoc = data.output
+        loadCredits()
+      }catch(err){
+        consoleEl.textContent = 'Error: ' + err.message
+      }
     })
-    const text = await res.text()
-    let data
-    try { data = JSON.parse(text) } 
-    catch {
-      console.error('Failed to parse generate JSON:', text)
-      consoleEl.textContent = 'AI returned invalid output'
-      return
-    }
 
-    if(data.error){
-      consoleEl.textContent = 'Error: ' + data.error
-      return
-    }
-
-    consoleEl.textContent = 'Generation complete!'
-    previewEl.value = data.output || '<p>No output</p>'
-    renderEl.srcdoc = data.output || '<p>No output</p>'
-
-    // Refresh credits after generation
-    creditsEl.textContent = 'Credits: ' + (data.credits ?? 0)
-
-  }catch(err){
-    consoleEl.textContent = 'Error: ' + err.message
-  }
-})
-
-// Copy HTML button
-copyBtn.addEventListener('click', ()=>{
-  navigator.clipboard.writeText(previewEl.value)
-    .then(()=>{ consoleEl.textContent='HTML copied to clipboard!'; })
-    .catch(()=>{ consoleEl.textContent='Failed to copy.'; })
-})
-</script>
-
+    // Copy button
+    copyBtn.addEventListener('click', ()=>{
+      navigator.clipboard.writeText(previewEl.textContent)
+        .then(()=>{ consoleEl.textContent='HTML copied to clipboard!'; })
+        .catch(()=>{ consoleEl.textContent='Failed to copy.'; })
+    })
+  </script>
 </body>
 </html>
