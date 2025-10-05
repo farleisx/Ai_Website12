@@ -1,41 +1,65 @@
 import { createClient } from '@supabase/supabase-js'
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+// Initialize Supabase and Gemini
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
 
 export default async function handler(req, res) {
   try {
-    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed', credits: 0 })
 
     const { prompt, user_id, action } = req.body
-    if (!user_id) return res.status(400).json({ error: 'Missing user_id' })
+    if (!user_id) return res.status(400).json({ error: 'Missing user_id', credits: 0 })
 
-    // Handle getCredits action
+    // ------------------------
+    // 1️⃣ Handle getCredits action
+    // ------------------------
     if (action === 'getCredits') {
+      try {
+        const { data, error } = await supabase
+          .from('credits')
+          .select('credits')
+          .eq('user_id', user_id)
+          .single()
+        if (error || !data) return res.status(200).json({ credits: 0 })
+        return res.status(200).json({ credits: data.credits ?? 0 })
+      } catch (err) {
+        console.error('Supabase getCredits error:', err)
+        return res.status(200).json({ credits: 0 })
+      }
+    }
+
+    // ------------------------
+    // 2️⃣ Ensure prompt exists
+    // ------------------------
+    if (!prompt) return res.status(400).json({ error: 'Missing prompt', credits: 0 })
+
+    // ------------------------
+    // 3️⃣ Fetch current credits
+    // ------------------------
+    let credits = 0
+    try {
       const { data, error } = await supabase
         .from('credits')
         .select('credits')
         .eq('user_id', user_id)
         .single()
-      if (error) return res.status(200).json({ credits: 0 }) // fallback to 0
-      return res.status(200).json({ credits: data.credits ?? 0 })
+      if (error || !data) return res.status(200).json({ error: 'Failed to fetch credits', credits: 0 })
+      credits = data.credits
+      if (credits < 1) return res.status(200).json({ error: 'Not enough credits', credits: 0 })
+    } catch (err) {
+      console.error('Supabase fetch credits error:', err)
+      return res.status(200).json({ error: 'Failed to fetch credits', credits: 0 })
     }
 
-    if (!prompt) return res.status(400).json({ error: 'Missing prompt' })
-
-    // Fetch current credits
-    const { data: creditData, error: creditError } = await supabase
-      .from('credits')
-      .select('credits')
-      .eq('user_id', user_id)
-      .single()
-    if (creditError || !creditData) return res.status(200).json({ error: 'Failed to fetch credits', credits: 0 })
-    if (creditData.credits < 1) return res.status(200).json({ error: 'Not enough credits', credits: 0 })
-
-    // Call Gemini AI
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" })
-    const aiPrompt = `
+    // ------------------------
+    // 4️⃣ Call Gemini AI safely
+    // ------------------------
+    let output = '<p>No output</p>'
+    try {
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" })
+      const aiPrompt = `
 You are an AI code builder agent.
 Generate working HTML/CSS/JS code for this request:
 "${prompt}"
@@ -45,16 +69,34 @@ Rules:
 2. Only return code.
 3. For web apps, include full HTML (<html>, <head>, <body>).
 `
-    const result = await model.generateContent(aiPrompt)
-    const fullOutput = await result.response.text()
+      const result = await model.generateContent(aiPrompt)
+      output = await result.response.text()
+      if (!output || output.trim() === '') output = '<p>No output</p>'
+    } catch (gemErr) {
+      console.error('Gemini API error:', gemErr)
+      return res.status(200).json({ error: 'AI generation failed', credits })
+    }
 
-    // Deduct 1 credit
-    await supabase.from('credits').update({ credits: creditData.credits - 1 }).eq('user_id', user_id)
+    // ------------------------
+    // 5️⃣ Deduct 1 credit safely
+    // ------------------------
+    try {
+      await supabase
+        .from('credits')
+        .update({ credits: credits - 1 })
+        .eq('user_id', user_id)
+    } catch (err) {
+      console.error('Supabase update credits error:', err)
+      // Don't fail the response — just return previous credits
+    }
 
-    res.status(200).json({ output: fullOutput || '<p>No output</p>', credits: creditData.credits - 1 })
+    // ------------------------
+    // 6️⃣ Return result
+    // ------------------------
+    res.status(200).json({ output, credits: credits - 1 })
 
   } catch (err) {
-    console.error('API error:', err)
+    console.error('API top-level error:', err)
     res.status(200).json({ error: 'Server error occurred', credits: 0 })
   }
 }
