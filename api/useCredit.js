@@ -18,9 +18,16 @@ export default async function handler(req, res) {
       .eq('user_id', user_id)
       .single()
 
-    if (error) return res.status(500).json({ error: 'Failed to fetch credits: ' + error.message })
+    if (error && error.code !== 'PGRST116') {
+      return res.status(500).json({ error: 'Failed to fetch credits: ' + error.message })
+    }
 
-    if (!data) return res.status(400).json({ error: 'User credits not found' })
+    if (!data) {
+      // Initialize user if missing
+      await supabase.from('credits').insert({ user_id, credits: 5 - amount })
+      return res.status(200).json({ credits: 5 - amount })
+    }
+
     if (data.credits < amount) return res.status(400).json({ error: 'Not enough credits' })
 
     const { error: updateError } = await supabase
@@ -28,11 +35,11 @@ export default async function handler(req, res) {
       .update({ credits: data.credits - amount })
       .eq('user_id', user_id)
 
-    if (updateError) return res.status(500).json({ error: 'Failed to update credits: ' + updateError.message })
+    if (updateError) return res.status(500).json({ error: updateError.message })
 
     res.status(200).json({ credits: data.credits - amount })
   } catch (err) {
     console.error(err)
-    res.status(500).json({ error: err.message || 'Failed to use credits' })
+    res.status(500).json({ error: err.message || 'Server error' })
   }
 }
