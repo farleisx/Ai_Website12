@@ -2,10 +2,22 @@ import { createClient } from '@supabase/supabase-js'
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // Initialize Supabase and Gemini
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
 
 export default async function handler(req, res) {
+  console.log('=== /api/generate called ===')
+  console.log('ENV CHECK:', {
+    SUPABASE_URL: process.env.SUPABASE_URL ? 'SET' : 'MISSING',
+    SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ? 'SET' : 'MISSING',
+    GEMINI_KEY: process.env.GEMINI_API_KEY ? 'SET' : 'MISSING'
+  })
+  console.log('Request method:', req.method)
+  console.log('Request body:', req.body)
+
   try {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed', credits: 0 })
 
@@ -22,6 +34,7 @@ export default async function handler(req, res) {
           .select('credits')
           .eq('user_id', user_id)
           .single()
+        console.log('getCredits query result:', { data, error })
         if (error || !data) return res.status(200).json({ credits: 0 })
         return res.status(200).json({ credits: data.credits ?? 0 })
       } catch (err) {
@@ -45,6 +58,7 @@ export default async function handler(req, res) {
         .select('credits')
         .eq('user_id', user_id)
         .single()
+      console.log('Supabase credits query result:', { data, error })
       if (error || !data) return res.status(200).json({ error: 'Failed to fetch credits', credits: 0 })
       credits = data.credits
       if (credits < 1) return res.status(200).json({ error: 'Not enough credits', credits: 0 })
@@ -69,8 +83,10 @@ Rules:
 2. Only return code.
 3. For web apps, include full HTML (<html>, <head>, <body>).
 `
+      console.log('Sending prompt to Gemini...')
       const result = await model.generateContent(aiPrompt)
       output = await result.response.text()
+      console.log('Gemini output length:', output.length)
       if (!output || output.trim() === '') output = '<p>No output</p>'
     } catch (gemErr) {
       console.error('Gemini API error:', gemErr)
@@ -81,10 +97,11 @@ Rules:
     // 5️⃣ Deduct 1 credit safely
     // ------------------------
     try {
-      await supabase
+      const { data, error } = await supabase
         .from('credits')
         .update({ credits: credits - 1 })
         .eq('user_id', user_id)
+      console.log('Credits update result:', { data, error })
     } catch (err) {
       console.error('Supabase update credits error:', err)
       // Don't fail the response — just return previous credits
