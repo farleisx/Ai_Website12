@@ -1,94 +1,106 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js';
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
-)
+);
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 export default async function handler(req, res) {
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+  const { prompt, previousCode, user_id } = req.body;
+  if (!prompt) return res.status(400).json({ error: "Missing prompt" });
+  if (!user_id) return res.status(400).json({ error: "Missing user_id" });
+
   try {
-    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
-
-    const { prompt, user_id, action } = req.body
-    if (!user_id) return res.status(400).json({ error: 'Missing user_id' })
-
-    // 1️⃣ Ensure user credits exist
+    // 1️⃣ Fetch user credits
     let { data, error } = await supabase
       .from('credits')
       .select('credits')
       .eq('user_id', user_id)
-      .single()
+      .single();
 
     if (error && error.code !== 'PGRST116') {
-      console.error('Supabase fetch error:', error)
-      return res.status(500).json({ error: 'Supabase fetch error: ' + error.message })
+      console.error('Supabase fetch error:', error);
+      return res.status(500).json({ error: 'Supabase fetch error: ' + error.message });
     }
 
+    // 2️⃣ Initialize credits if missing
+    let credits = data?.credits ?? 0;
     if (!data) {
-      // Initialize with 5 credits
-      await supabase.from('credits').insert({ user_id, credits: 5 })
-      data = { credits: 5 }
+      await supabase.from('credits').insert({ user_id, credits: 5 });
+      credits = 5;
     }
 
-    let credits = data.credits
+    if (credits < 1) return res.status(400).json({ error: "Not enough credits" });
 
-    // 2️⃣ Handle "getCredits" action only
-    if (action === 'getCredits') {
-      return res.status(200).json({ credits })
+    // 3️⃣ Prepare prompt for AI
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    let requestPrompt = "";
+
+    if (previousCode) {
+      requestPrompt = `
+You are an AI code builder agent. You have the following existing code:
+${previousCode}
+
+The user wants to update or add features according to:
+"${prompt}"
+
+Rules:
+1. Generate or update code in any language/framework.
+2. Wrap code in proper markdown blocks (\`\`\`html\`\`\`, \`\`\`css\`\`\`, etc.).
+3. Only return code with inline comments if needed.
+4. Update or add only the needed code.
+`;
+    } else {
+      requestPrompt = `
+You are an AI code builder agent.
+Generate a FULL working project for this request:
+"${prompt}"
+
+Rules:
+1. Generate code in any language/framework.
+2. Wrap code in proper markdown blocks.
+3. Only return code with inline comments if needed.
+4. For web apps, HTML must be complete (<html>, <head>, <body>).
+`;
     }
 
-    // 3️⃣ Handle "useCredit" action only (deduct without generating)
-    if (action === 'useCredit') {
-      if (credits < 1) return res.status(400).json({ error: 'Not enough credits' })
-      await supabase.from('credits').update({ credits: credits - 1 }).eq('user_id', user_id)
-      return res.status(200).json({ credits: credits - 1 })
+    // 4️⃣ Generate code
+    const result = await model.generateContent(requestPrompt);
+    const fullOutput = await result.response.text();
+
+    if (!fullOutput || fullOutput.trim() === "") {
+      return res.status(500).json({ error: "AI returned empty output" });
     }
 
-    // 4️⃣ For "generate" action
-    if (!prompt) return res.status(400).json({ error: 'Missing prompt' })
-    if (credits < 1) return res.status(400).json({ error: 'Not enough credits' })
-
-    // 5️⃣ Call Gemini 2.5 Flash API
-    const r = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta2/models/gemini-2.5-flash:generate',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.GEMINI_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          prompt: { text: prompt },
-          temperature: 0.7,
-          maxOutputTokens: 1000
-        })
+    // 5️⃣ Update previous code with new blocks
+    let updatedCode = previousCode || "";
+    if (previousCode) {
+      const regex = /```(\w+)[\s\S]*?```/g;
+      let match;
+      while ((match = regex.exec(fullOutput)) !== null) {
+        const codeBlock = match[0].replace(/```(\w+)/, '').replace(/```/, '').trim();
+        updatedCode += "\n\n" + codeBlock;
       }
-    )
-
-    const text = await r.text()
-    if (!r.ok) {
-      console.error('Gemini API returned error:', text)
-      return res.status(500).json({ error: 'Gemini API error: ' + text })
-    }
-
-    let result
-    try { result = JSON.parse(text) } 
-    catch {
-      console.error('Gemini returned invalid JSON:', text)
-      return res.status(500).json({ error: 'Gemini returned invalid JSON: ' + text })
+    } else {
+      updatedCode = fullOutput;
     }
 
     // 6️⃣ Deduct 1 credit
-    await supabase.from('credits').update({ credits: credits - 1 }).eq('user_id', user_id)
+    await supabase
+      .from('credits')
+      .update({ credits: credits - 1 })
+      .eq('user_id', user_id);
 
-    // 7️⃣ Return HTML output + current credits
-    res.status(200).json({
-      html: result?.candidates?.[0]?.content || '<p>No output</p>',
-      credits: credits - 1
-    })
+    // 7️⃣ Return code + remaining credits
+    res.status(200).json({ output: updatedCode, credits: credits - 1 });
 
   } catch (err) {
-    console.error('Server error:', err)
-    res.status(500).json({ error: err.message || 'Server error' })
+    console.error("AI request failed:", err);
+    res.status(500).json({ error: "AI request failed" });
   }
 }
